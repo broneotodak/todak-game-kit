@@ -90,6 +90,7 @@ const commands = {
   tgk remember "<note>"   |  tgk recall [words]             the project brain (memory/brain.md)
   tgk journey [--collect-codex]                             the recorded prompts (journey/prompts.jsonl)
   tgk status  |  tgk step done <id>                         steps and progress
+  tgk sync                                                  send new journey events to the course site
   tgk log-prompt --desk claude|codex                        (hook) record a prompt from stdin JSON`);
   },
   new() {
@@ -143,6 +144,7 @@ const commands = {
     const url = (process.env.TGK_SHOWCASE_URL || 'https://course.neotodak.com') + '/' + rel + '/';
     meta.steps.publish = nowIso(); meta.published = { url, at: nowIso() }; saveMeta(dir, meta);
     appendJsonl(path.join(dir, 'journey/events.jsonl'), { at: nowIso(), type: 'publish', url });
+    syncJourney(dir, meta, false);
     say(`Published: ${url}\n(the site deploys in about a minute)`);
   },
   review() {
@@ -163,6 +165,7 @@ const commands = {
     const md = `# Review — ${meta.name}\n\n${nowIso()} · student ${meta.student} · week ${meta.week}\n\n**${passed} of ${all.length} checks passed.** ${passed === all.length ? 'Ready to publish.' : 'Fix the items marked ✗ and run the review again.'}\n\n| Check | Result | Note |\n|---|---|---|\n` + all.map(c => `| ${c.label || c.id} | ${c.pass ? '✓' : '✗'} | ${c.note || ''} |`).join('\n') + '\n\nDemonstrator review: headless smoke run plus the "ships complete" list. Not a store review.\n';
     fs.mkdirSync(path.join(dir, 'review'), { recursive: true }); fs.writeFileSync(path.join(dir, 'review/report.md'), md);
     appendJsonl(path.join(dir, 'journey/events.jsonl'), { at: nowIso(), type: 'review', passed, total: all.length });
+    syncJourney(dir, meta, false);
     if (!quick) say(md); else say(`${passed}/${all.length} checks passed → review/report.md`);
   },
   remember() { const { dir } = loadGame(); const note = args.slice(1).join(' ').trim(); if (!note) die('tgk remember "<note>"'); fs.appendFileSync(path.join(dir, 'memory/brain.md'), `- ${nowIso().slice(0, 16).replace('T', ' ')} ${note}\n`); say('Remembered.'); },
@@ -182,6 +185,7 @@ const commands = {
     const pj = path.join(dir, 'journey/prompts.jsonl'); say(`  prompts recorded: ${fs.existsSync(pj) ? fs.readFileSync(pj, 'utf8').trim().split('\n').filter(Boolean).length : 0}`);
   },
   step() { const { dir, meta } = loadGame(); const [_, what, id] = args; if (what !== 'done' || !id) die('tgk step done <id>'); meta.steps = meta.steps || {}; meta.steps[id] = nowIso(); saveMeta(dir, meta); say('Step done: ' + id); },
+  sync() { const { dir, meta } = loadGame(); const n = syncJourney(dir, meta, true); say(n < 0 ? 'Sync skipped (no TGK_INGEST_TOKEN or offline).' : `Synced ${n} new events.`); },
   'log-prompt'() {
     const desk = String(flag('desk', 'claude')); const dir = findGame(); if (!dir) return;
     let raw = ''; try { raw = fs.readFileSync(0, 'utf8'); } catch {}
@@ -189,8 +193,30 @@ const commands = {
     if (!String(prompt).trim()) return;
     const meta = JSON.parse(fs.readFileSync(path.join(dir, '.tgk.json'), 'utf8'));
     appendJsonl(path.join(dir, 'journey/prompts.jsonl'), { at: nowIso(), desk, student: meta.student, game: meta.slug, week: meta.week, prompt: String(prompt).slice(0, 4000) });
+    // sync in the background so the desk is never slowed down
+    try { const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'sync'], { cwd: dir, detached: true, stdio: 'ignore' }); child.unref(); } catch {}
   },
 };
+
+
+function syncJourney(dir, meta, verbose) {
+  const token = process.env.TGK_INGEST_TOKEN; const base = process.env.TGK_JOURNEY_URL || 'https://course.neotodak.com';
+  if (!token) return -1;
+  const stateFile = path.join(dir, 'journey/.synced.json'); let state = { prompts: 0, events: 0 }; try { state = JSON.parse(fs.readFileSync(stateFile, 'utf8')); } catch {}
+  const read = (f) => fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean) : [];
+  const prompts = read(path.join(dir, 'journey/prompts.jsonl')); const events = read(path.join(dir, 'journey/events.jsonl'));
+  const batch = [];
+  prompts.slice(state.prompts).forEach((l, i) => { try { const j = JSON.parse(l); batch.push({ id: `${meta.student}/${meta.slug}/p/${state.prompts + i}/${j.at}`, kind: 'prompt', at: j.at, student: meta.student, game: meta.slug, week: meta.week, desk: j.desk, prompt: j.prompt }); } catch {} });
+  events.slice(state.events).forEach((l, i) => { try { const j = JSON.parse(l); batch.push({ id: `${meta.student}/${meta.slug}/e/${state.events + i}/${j.at}`, kind: j.type, at: j.at, student: meta.student, game: meta.slug, week: meta.week, data: j }); } catch {} });
+  if (!batch.length) return 0;
+  const r = spawnSync(process.execPath, ['-e', `
+    const [url, token, body] = process.argv.slice(1);
+    fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-kit-token': token }, body }).then(r => { process.exitCode = r.ok ? 0 : 2; return r.text(); }).then(t => process.stdout.write(t)).catch(() => { process.exitCode = 3; });
+  `, base + '/api/journey/ingest', token, JSON.stringify(batch)], { encoding: 'utf8', timeout: 15000 });
+  if (r.status !== 0) { if (verbose) process.stderr.write('sync failed: ' + (r.stdout || r.stderr || '') + '\n'); return -1; }
+  fs.writeFileSync(stateFile, JSON.stringify({ prompts: prompts.length, events: events.length }));
+  return batch.length;
+}
 
 function collectCodex(dir, file) {
   // Codex keeps session transcripts under ~/.codex/sessions; pick up user messages whose session ran in this folder.
