@@ -1,0 +1,50 @@
+{
+  "name": "todak-sidebar",
+  "displayName": "Todak",
+  "description": "Steps, art and prompt journey for the Todak Game Kit demonstrator.",
+  "version": "0.1.0",
+  "publisher": "todak",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The sidebar reads local game files. Trust the workspace to run kit commands.",
+      "restrictedConfigurations": ["todak.kitPath"]
+    },
+    "virtualWorkspaces": { "supported": false }
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "todak", "title": "Todak", "icon": "media/todak.svg" }]
+    },
+    "views": {
+      "todak": [{ "type": "webview", "id": "todak.sidebar", "name": "Your game" }]
+    },
+    "commands": [
+      { "command": "todak.run", "title": "Run", "category": "Todak" },
+      { "command": "todak.build", "title": "Build", "category": "Todak" },
+      { "command": "todak.publish", "title": "Publish", "category": "Todak" },
+      { "command": "todak.review", "title": "Review", "category": "Todak" },
+      { "command": "todak.new", "title": "New Pong Game", "category": "Todak" },
+      { "command": "todak.openJourney", "title": "Open Journey", "category": "Todak" },
+      { "command": "todak.openReport", "title": "Open Review Report", "category": "Todak" }
+    ],
+    "configuration": {
+      "title": "Todak",
+      "properties": {
+        "todak.kitPath": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Path to todak-game-kit (the folder containing bin/tgk.mjs). Relative paths resolve from the game. When empty, use ../todak-game-kit, then TGK_KIT."
+        }
+      }
+    }
+  },
+  "scripts": { "test": "node --test test/*.test.js" }
+}
