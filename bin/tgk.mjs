@@ -134,8 +134,11 @@ const commands = {
     const rel = path.posix.join('play', slug(meta.student), meta.slug); const dst = path.join(repo, rel);
     fs.rmSync(dst, { recursive: true, force: true }); copyDir(build, dst, {});
     fs.writeFileSync(path.join(dst, 'game.json'), JSON.stringify({ name: meta.name, student: meta.student, week: meta.week, published: nowIso(), kit: meta.kit }, null, 2));
+    const listFile = path.join(repo, 'play/games.json'); let list = []; try { list = JSON.parse(fs.readFileSync(listFile, 'utf8')); } catch {}
+    list = list.filter(g => g.path !== '/' + rel + '/'); list.push({ name: meta.name, student: meta.student, week: meta.week, published: nowIso(), path: '/' + rel + '/' });
+    fs.mkdirSync(path.dirname(listFile), { recursive: true }); fs.writeFileSync(listFile, JSON.stringify(list, null, 2) + '\n');
     const git = (a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
-    git(['add', rel]); git(['-c', 'user.name=tgk', '-c', 'user.email=tgk@todak.com', 'commit', '-q', '-m', `Showcase: ${meta.name} by ${meta.student} (week ${meta.week})`]);
+    git(['add', rel, 'play/games.json']); git(['-c', 'user.name=tgk', '-c', 'user.email=tgk@todak.com', 'commit', '-q', '-m', `Showcase: ${meta.name} by ${meta.student} (week ${meta.week})`]);
     const p = git(['push', '-q', 'origin', 'HEAD']); if (p.status !== 0) die('push failed: ' + p.stderr);
     const url = (process.env.TGK_SHOWCASE_URL || 'https://course.neotodak.com') + '/' + rel + '/';
     meta.steps.publish = nowIso(); meta.published = { url, at: nowIso() }; saveMeta(dir, meta);
