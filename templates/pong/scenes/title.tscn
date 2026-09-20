@@ -1,0 +1,81 @@
+[gd_scene load_steps=2 format=3 uid="uid://tgk_pong_title"]
+
+[ext_resource type="Script" path="res://scripts/title.gd" id="1_title"]
+
+[node name="Title" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_title")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0784314, 0.0823529, 0.164706, 1)
+
+[node name="GameName" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -120.0
+offset_bottom = -120.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.419608, 0.658824, 1)
+theme_override_font_sizes/font_size = 56
+text = "{{GAME_NAME}}"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Hint" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 10.0
+offset_bottom = 10.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.94902, 0.94902, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "Press SPACE to play  ·  W / S move your paddle  ·  first to 5 wins"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HighScore" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 80.0
+offset_bottom = 80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.603922, 0.611765, 0.788235, 1)
+theme_override_font_sizes/font_size = 20
+text = "Best: 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Credit" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 220.0
+offset_bottom = 220.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.290196, 0.301961, 0.541176, 1)
+theme_override_font_sizes/font_size = 16
+text = "made by {{STUDENT}} · Todak AI Creator Program · demonstrator"
+horizontal_alignment = 1
+vertical_alignment = 1

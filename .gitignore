@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+*.key
+*.token
+secrets/
+*.bak
+*.log
+.DS_Store
+# Godot
+.godot/
+build/
+*.import
+# student data never belongs in the kit repo
+/games/
