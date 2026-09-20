@@ -29,7 +29,8 @@ fi
 echo "  Godot: $GODOT_BIN"
 # environment for the desks and the kit
 ENVF="$HOME/.todak/workbench.env"; mkdir -p "$HOME/.todak"
-{ echo "export GODOT_BIN=\"$GODOT_BIN\""; echo "export TGK_KIT=\"$KIT\""; echo "export PATH=\"$KIT/bin:\$PATH\""; } > "$ENVF"
+{ echo "export GODOT_BIN=\"$GODOT_BIN\""; echo "export TGK_KIT=\"$KIT\""; echo "export PATH=\"$KIT/bin:\$PATH\""; [ -n "${TGK_INGEST_TOKEN:-}" ] && echo "export TGK_INGEST_TOKEN=\"$TGK_INGEST_TOKEN\""; } > "$ENVF"; chmod 600 "$ENVF"
+[ -n "${TGK_INGEST_TOKEN:-}" ] || echo "  (no TGK_INGEST_TOKEN in the environment: prompts stay local until it is added to $ENVF)"
 ln -sf "$KIT/bin/tgk.mjs" "$KIT/bin/tgk" 2>/dev/null || true
 grep -q 'todak/workbench.env' "$HOME/.zshrc" 2>/dev/null || echo "[ -f \"$ENVF\" ] && source \"$ENVF\"" >> "$HOME/.zshrc"
 grep -q 'todak/workbench.env' "$HOME/.bashrc" 2>/dev/null || echo "[ -f \"$ENVF\" ] && source \"$ENVF\"" >> "$HOME/.bashrc"
