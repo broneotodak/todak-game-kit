@@ -131,21 +131,34 @@ const commands = {
     const target = args[1] || 'web'; if (target !== 'web') die('demonstrator publishes web only');
     const { dir, meta } = loadGame(); const build = path.join(dir, 'build/web');
     if (!fs.existsSync(path.join(build, 'index.html'))) { commands.build(); }
-    const repo = process.env.TGK_SHOWCASE_REPO; if (!repo || !fs.existsSync(path.join(repo, '.git'))) die('set TGK_SHOWCASE_REPO to the course site checkout (the showcase lives under its play/ folder)');
-    const rel = path.posix.join('play', slug(meta.student), meta.slug); const dst = path.join(repo, rel);
+    let repo = process.env.TGK_SHOWCASE_REPO; let team = false;
+    if (!repo || !fs.existsSync(path.join(repo, '.git'))) {
+      // Team mode: publish to the shared showcase repository with the demo deploy key.
+      const key = process.env.TGK_PUBLISH_KEY || path.join(os.homedir(), '.todak', 'showcase-deploy-key');
+      if (!fs.existsSync(key)) die('no showcase to publish to: set TGK_SHOWCASE_REPO (site checkout) or put the team deploy key at ' + key);
+      team = true; repo = path.join(os.homedir(), '.todak', 'showcase');
+      const sshCmd = `ssh -i "${key}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new`;
+      const env = { ...process.env, GIT_SSH_COMMAND: sshCmd };
+      const remote = process.env.TGK_SHOWCASE_GIT || 'git@github.com:broneotodak/todak-showcase.git';
+      if (!fs.existsSync(path.join(repo, '.git'))) { fs.mkdirSync(path.dirname(repo), { recursive: true }); const c = spawnSync('git', ['clone', '-q', '--depth', '1', remote, repo], { env, encoding: 'utf8' }); if (c.status !== 0) die('could not reach the team showcase: ' + c.stderr.slice(0, 200)); }
+      else { spawnSync('git', ['-C', repo, 'fetch', '-q', '--depth', '1', 'origin', 'main'], { env, encoding: 'utf8' }); spawnSync('git', ['-C', repo, 'reset', '-q', '--hard', 'origin/main'], { encoding: 'utf8' }); }
+      process.env.GIT_SSH_COMMAND = sshCmd;
+    }
+    const rel = team ? path.posix.join(slug(meta.student), meta.slug) : path.posix.join('play', slug(meta.student), meta.slug); const dst = path.join(repo, rel);
     fs.rmSync(dst, { recursive: true, force: true }); copyDir(build, dst, {});
     fs.writeFileSync(path.join(dst, 'game.json'), JSON.stringify({ name: meta.name, student: meta.student, week: meta.week, published: nowIso(), kit: meta.kit }, null, 2));
-    const listFile = path.join(repo, 'play/games.json'); let list = []; try { list = JSON.parse(fs.readFileSync(listFile, 'utf8')); } catch {}
-    list = list.filter(g => g.path !== '/' + rel + '/'); list.push({ name: meta.name, student: meta.student, week: meta.week, published: nowIso(), path: '/' + rel + '/' });
+    const listFile = team ? path.join(repo, 'games.json') : path.join(repo, 'play/games.json'); let list = []; try { list = JSON.parse(fs.readFileSync(listFile, 'utf8')); } catch {}
+    const listPath = team ? rel + '/' : '/' + rel + '/';
+    list = list.filter(g => g.path !== listPath); list.push({ name: meta.name, student: meta.student, week: meta.week, published: nowIso(), path: listPath });
     fs.mkdirSync(path.dirname(listFile), { recursive: true }); fs.writeFileSync(listFile, JSON.stringify(list, null, 2) + '\n');
-    const git = (a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
-    git(['add', rel, 'play/games.json']); git(['-c', 'user.name=tgk', '-c', 'user.email=tgk@todak.com', 'commit', '-q', '-m', `Showcase: ${meta.name} by ${meta.student} (week ${meta.week})`]);
+    const git = (a) => spawnSync('git', a, { cwd: repo, encoding: 'utf8', env: process.env });
+    git(['add', rel, team ? 'games.json' : 'play/games.json']); git(['-c', 'user.name=tgk', '-c', 'user.email=tgk@todak.com', 'commit', '-q', '-m', `Showcase: ${meta.name} by ${meta.student} (week ${meta.week})`]);
     const p = git(['push', '-q', 'origin', 'HEAD']); if (p.status !== 0) die('push failed: ' + p.stderr);
-    const url = (process.env.TGK_SHOWCASE_URL || 'https://course.neotodak.com') + '/' + rel + '/';
+    const url = team ? (process.env.TGK_SHOWCASE_URL || 'https://broneotodak.github.io/todak-showcase') + '/' + rel + '/' : (process.env.TGK_SHOWCASE_URL || 'https://course.neotodak.com') + '/' + rel + '/';
     meta.steps.publish = nowIso(); meta.published = { url, at: nowIso() }; saveMeta(dir, meta);
     appendJsonl(path.join(dir, 'journey/events.jsonl'), { at: nowIso(), type: 'publish', url });
     syncJourney(dir, meta, false);
-    say(`Published: ${url}\n(the site deploys in about a minute)`);
+    say(`Published: ${url}\n(the ${team ? 'team showcase' : 'site'} updates in about a minute)`);
   },
   review() {
     const { dir, meta } = loadGame(); const quick = args.includes('--quick');

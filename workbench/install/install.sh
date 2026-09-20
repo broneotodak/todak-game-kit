@@ -31,6 +31,8 @@ echo "  Godot: $GODOT_BIN"
 ENVF="$HOME/.todak/workbench.env"; mkdir -p "$HOME/.todak"
 { echo "export GODOT_BIN=\"$GODOT_BIN\""; echo "export TGK_KIT=\"$KIT\""; echo "export PATH=\"$KIT/bin:\$PATH\""; [ -n "${TGK_INGEST_TOKEN:-}" ] && echo "export TGK_INGEST_TOKEN=\"$TGK_INGEST_TOKEN\""; } > "$ENVF"; chmod 600 "$ENVF"
 [ -n "${TGK_INGEST_TOKEN:-}" ] || echo "  (no TGK_INGEST_TOKEN in the environment: prompts stay local until it is added to $ENVF)"
+# team publishing key (demo): copy it next to the env file if given
+if [ -n "${TGK_PUBLISH_KEY_FILE:-}" ] && [ -f "$TGK_PUBLISH_KEY_FILE" ]; then cp "$TGK_PUBLISH_KEY_FILE" "$HOME/.todak/showcase-deploy-key"; chmod 600 "$HOME/.todak/showcase-deploy-key"; echo "  team publish key installed"; else echo "  (no TGK_PUBLISH_KEY_FILE: put the team key at ~/.todak/showcase-deploy-key to publish)"; fi
 ln -sf "$KIT/bin/tgk.mjs" "$KIT/bin/tgk" 2>/dev/null || true
 grep -q 'todak/workbench.env' "$HOME/.zshrc" 2>/dev/null || echo "[ -f \"$ENVF\" ] && source \"$ENVF\"" >> "$HOME/.zshrc"
 grep -q 'todak/workbench.env' "$HOME/.bashrc" 2>/dev/null || echo "[ -f \"$ENVF\" ] && source \"$ENVF\"" >> "$HOME/.bashrc"

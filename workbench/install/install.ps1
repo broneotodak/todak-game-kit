@@ -26,6 +26,7 @@ if (-not (Test-Path (Join-Path $T "web_nothreads_release.zip"))) {
 }
 [Environment]::SetEnvironmentVariable("GODOT_BIN", $GodotExe, "User")
 [Environment]::SetEnvironmentVariable("TGK_KIT", "$Kit", "User")
+if ($env:TGK_PUBLISH_KEY_FILE -and (Test-Path $env:TGK_PUBLISH_KEY_FILE)) { New-Item -ItemType Directory -Force -Path (Join-Path $env:USERPROFILE ".todak") | Out-Null; Copy-Item $env:TGK_PUBLISH_KEY_FILE (Join-Path $env:USERPROFILE ".todak\showcase-deploy-key") -Force; Write-Host "  team publish key installed" } else { Write-Host "  (no TGK_PUBLISH_KEY_FILE: put the team key at ~\.todak\showcase-deploy-key to publish)" }
 if ($env:TGK_INGEST_TOKEN) { [Environment]::SetEnvironmentVariable("TGK_INGEST_TOKEN", $env:TGK_INGEST_TOKEN, "User") } else { Write-Host "  (no TGK_INGEST_TOKEN in the environment: prompts stay local until it is set as a user variable)" }
 $path = [Environment]::GetEnvironmentVariable("Path", "User"); if ($path -notlike "*$Kit\bin*") { [Environment]::SetEnvironmentVariable("Path", "$path;$Kit\bin", "User") }
 Set-Content (Join-Path $Kit "bin\tgk.cmd") "@echo off`r`nnode `"%~dp0tgk.mjs`" %*"
