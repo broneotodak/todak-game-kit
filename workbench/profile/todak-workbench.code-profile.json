@@ -1,0 +1,24 @@
+{
+  "name": "Todak Workbench",
+  "note": "VS Code profile for the demonstrator. Import via: Settings gear → Profiles → Import Profile → this file (or run the installer). Demonstrator, not the kit.",
+  "extensions": [
+    "anthropic.claude-code",
+    "openai.chatgpt",
+    "geequlim.godot-tools"
+  ],
+  "settings": {
+    "workbench.startupEditor": "none",
+    "workbench.activityBar.location": "default",
+    "workbench.colorTheme": "Default Dark Modern",
+    "editor.fontSize": 15,
+    "editor.minimap.enabled": false,
+    "editor.renderWhitespace": "none",
+    "explorer.confirmDelete": true,
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "godotTools.editorPath.godot4": "${env:GODOT_BIN}",
+    "godotTools.lsp.serverHost": "127.0.0.1",
+    "files.exclude": { "**/.godot": true, "**/build": true, "**/*.import": true },
+    "todak.kitPath": "${env:TGK_KIT}"
+  }
+}
