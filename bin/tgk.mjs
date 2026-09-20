@@ -229,7 +229,7 @@ function collectCodex(dir, file) {
     for (const line of fs.readFileSync(p, 'utf8').split('\n')) { if (!line) continue; let j; try { j = JSON.parse(line); } catch { continue; }
       const s = JSON.stringify(j); if (!cwdOk && s.includes(dir)) cwdOk = true;
       const role = j.role || j.payload?.role || j.message?.role; const content = j.content || j.payload?.content || j.message?.content;
-      if (cwdOk && role === 'user' && content) { const text = Array.isArray(content) ? content.map(c => c.text || '').join(' ') : String(content); const id = p + ':' + (j.id || j.timestamp || text.slice(0, 40)); if (seen.has(id) || !text.trim()) continue; seen.add(id);
+      if (cwdOk && role === 'user' && content) { const text = Array.isArray(content) ? content.map(c => c.text || '').join(' ') : String(content); const id = p + ':' + (j.id || j.timestamp || text.slice(0, 40)); if (seen.has(id) || !text.trim() || /^\s*</.test(text) || /recommended_plugins|<environment_context>|<user_instructions>/i.test(text)) continue; seen.add(id);
         appendJsonl(file, { at: j.timestamp || nowIso(), desk: 'codex', student: meta.student, game: meta.slug, week: meta.week, prompt: text.slice(0, 4000), codexId: id }); }
     }
   };
