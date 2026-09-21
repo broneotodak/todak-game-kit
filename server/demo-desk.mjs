@@ -5,7 +5,8 @@ import http from 'node:http'; import fs from 'node:fs'; import path from 'node:p
 import { spawn, spawnSync } from 'node:child_process';
 
 const PORT = Number(process.env.DEMO_PORT || 3860);
-const OPEN = process.env.DEMO_OPEN === '1'; // open demo: no PIN, only the daily cap and the session limit protect it
+const OPEN = process.env.DEMO_OPEN === '1';
+const TRAINER_PIN = process.env.DEMO_TRAINER_PIN || process.env.DEMO_PIN || ''; // the trainer's page is always gated, even when the student demo is open // open demo: no PIN, only the daily cap and the session limit protect it
 const PIN = process.env.DEMO_PIN || ''; if (!OPEN && !PIN) { console.error('DEMO_PIN missing (or set DEMO_OPEN=1)'); process.exit(1); }
 const ROOT = process.env.DEMO_ROOT || path.join(os.homedir(), 'demo-desk'); const SESS = path.join(ROOT, 'sessions'); fs.mkdirSync(SESS, { recursive: true });
 const KIT = process.env.TGK_KIT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'); const TGK = path.join(KIT, 'bin/tgk.mjs');
@@ -38,6 +39,39 @@ function commit(id, msg) { const dir = sdir(id); spawnSync('git', ['add', '-A'],
 function cleanup() { for (const id of fs.readdirSync(SESS)) { try { const st = fs.statSync(sdir(id)); if (Date.now() - st.mtimeMs > TTL) fs.rmSync(sdir(id), { recursive: true, force: true }); } catch {} } }
 setInterval(cleanup, 3600000);
 
+
+// ---- trainer's side: the class board and the trainer's box ----
+const SESSION_OBJECTIVE = { id: 'first-lab', title: 'First lab: play, then ask', goal: 'Get your paddle moving, and explain the change in one sentence.', checks: ['played', 'paddle', 'explained', 'ball'] };
+function reportScore(rep) { const m = (rep || '').match(/\*\*(\d+) of (\d+) checks passed/); return m ? { passed: +m[1], total: +m[2] } : null; }
+function classBoard() {
+  const rows = [];
+  for (const id of fs.readdirSync(SESS)) { if (!sid(id)) continue; try { const st = state(id); const j = st.journey || []; const last = j[j.length - 1] || null;
+    const asked = j.some(r => ['claude', 'codex', 'both', 'plan', 'blocked'].includes(r.desk)); const explained = j.some(r => r.desk === 'explain');
+    const lastAt = last ? Date.parse(last.at) : fs.statSync(sdir(id)).mtimeMs; const idleMin = Math.round((Date.now() - lastAt) / 60000);
+    let status = 'idle'; if (busy.get(id)) status = 'working'; else if (st.awaiting_explain) status = 'must explain'; else if (building.get(id)) status = 'rebuilding'; else if (!asked) status = st.built ? 'playing' : 'starting'; else if (idleMin < 10) status = 'active';
+    rows.push({ session: id, name: (st.student || '').replace(/^demo-/, ''), game: st.name, status, idleMin, built: st.built, steps: st.steps, awaiting_explain: st.awaiting_explain, checks: { played: !!(st.built && asked) || asked, paddle: !!st.steps.paddle, explained, ball: !!st.steps.ball }, prompts: j.filter(r => ['claude', 'codex', 'both', 'plan', 'blocked'].includes(r.desk)).length, explains: j.filter(r => r.desk === 'explain').length, routes: { claude: j.filter(r => r.desk === 'claude').length, codex: j.filter(r => r.desk === 'codex').length, plan: j.filter(r => r.desk === 'plan').length, blocked: j.filter(r => r.desk === 'blocked').length }, last: last ? { at: last.at, desk: last.desk, text: (last.prompt || '').slice(0, 120) } : null, review: reportScore(st.report), recent: j.slice(-5).map(r => ({ at: r.at, desk: r.desk, text: (r.prompt || '').slice(0, 140), reason: r.reason || null })) });
+  } catch {} }
+  rows.sort((a, b) => (b.last ? Date.parse(b.last.at) : 0) - (a.last ? Date.parse(a.last.at) : 0));
+  return { objective: SESSION_OBJECTIVE, students: rows, asksToday: asks.n, cap: CAP, at: new Date().toISOString() };
+}
+function findStudent(board, q) { q = String(q || '').trim().toLowerCase().replace(/^demo-/, ''); if (!q) return null; return board.students.find(r => r.name.toLowerCase() === q || r.session === q) || board.students.find(r => r.name.toLowerCase().startsWith(q)) || null; }
+async function trainerAsk(text) {
+  const board = classBoard(); const t = String(text || '').trim(); const low = t.toLowerCase(); const names = (rs) => rs.length ? rs.map(r => r.name).join(', ') : 'nobody';
+  const stepOf = (w) => /paddle/.test(w) ? 'paddle' : /ball|bounce/.test(w) ? 'ball' : /explain/.test(w) ? 'explained' : /play/.test(w) ? 'played' : /publish/.test(w) ? 'publish' : null;
+  let m;
+  if (!board.students.length) return { kind: 'answer', text: 'No students in the room yet. They appear here the moment they start a game at /demo.' };
+  if ((m = low.match(/who (has not|hasn'?t|did not|didn'?t|is not|isn'?t) (finished|done|completed|made|got|reached|explained)?\s*(.*)$/))) { const st = stepOf(m[3] || m[2]) || 'paddle'; const rs = board.students.filter(r => !r.checks[st] && !(st === 'publish' && r.steps.publish)); return { kind: 'answer', text: `${st === 'explained' ? 'Not yet explained a change' : 'Not yet done "' + st + '"'}: ${names(rs)}. (${rs.length} of ${board.students.length})`, students: rs.map(r => r.session) }; }
+  if ((m = low.match(/who (has|is|have|are) (finished|done|completed|made|got|reached|explained|built|playing)\s*(.*)$/))) { const st = stepOf(m[3] || m[2]) || (/built/.test(m[2]) ? 'played' : 'paddle'); const rs = board.students.filter(r => r.checks[st]); return { kind: 'answer', text: `Done "${st}": ${names(rs)}. (${rs.length} of ${board.students.length})`, students: rs.map(r => r.session) }; }
+  if (/who (is|are) (stuck|waiting|behind|idle|blocked)|stuck/.test(low)) { const rs = board.students.filter(r => r.status === 'must explain' || r.status === 'idle' || r.routes.blocked > 0); return { kind: 'answer', text: rs.length ? rs.map(r => `${r.name}: ${r.status}${r.routes.blocked ? ', asked before explaining ' + r.routes.blocked + 'x' : ''}${r.idleMin >= 10 ? ', quiet for ' + r.idleMin + ' min' : ''}`).join(' · ') : 'Nobody looks stuck right now.' }; }
+  if (/design desk|always.*astra|overrid/.test(low)) { const rs = board.students.filter(r => r.routes.codex > r.routes.claude); return { kind: 'answer', text: rs.length ? `Sending more to the design desk than the build desk: ${names(rs)}.` : 'Nobody is leaning on the design desk.' }; }
+  if (/^(summary|how is the class|class summary|status)/.test(low)) { const c = board.students; const done = c.filter(r => r.checks.paddle).length, ex = c.filter(r => r.checks.explained).length, need = c.filter(r => r.status === 'must explain').length; return { kind: 'answer', text: `${c.length} in the room · ${done} have the paddle moving · ${ex} have explained a change · ${need} must explain before their next change · ${c.reduce((a, r) => a + r.prompts, 0)} requests so far (${board.asksToday} of ${board.cap} today).` }; }
+  if ((m = low.match(/^(show|open|what about|how is)\s+(.+?)\??$/))) { const r = findStudent(board, m[2]); if (!r) return { kind: 'answer', text: `No student called "${m[2]}". In the room: ${names(board.students)}.` }; return { kind: 'student', text: `${r.name} · ${r.status} · paddle ${r.checks.paddle ? 'done' : 'not yet'} · explained ${r.explains}x · ${r.prompts} requests (${r.routes.claude} build, ${r.routes.codex} design, ${r.routes.plan} plan, ${r.routes.blocked} blocked)${r.review ? ' · review ' + r.review.passed + '/' + r.review.total : ''}.`, student: r }; }
+  if ((m = t.match(/^review\s+(.+)$/i))) { const r = findStudent(board, m[1]); if (!r) return { kind: 'answer', text: `No student called "${m[1]}".` }; if (busy.get(r.session)) return { kind: 'answer', text: `${r.name}'s desk is busy; try again in a minute.` }; busy.set(r.session, true); const rr = await run('node', [TGK, 'review', '--quick'], sdir(r.session), 180000); busy.delete(r.session); const st = state(r.session); const sc = reportScore(st.report); return { kind: 'review', text: `Reviewed ${r.name}: ${sc ? sc.passed + ' of ' + sc.total + ' checks passed' : rr.out.trim().slice(-120)}.`, report: st.report, student: r.session }; }
+  if ((m = t.match(/^(note|tell|message)\s+([^:]+):\s*(.+)$/i))) { const r = findStudent(board, m[2]); if (!r) return { kind: 'answer', text: `No student called "${m[2]}".` }; const note = m[3].trim().slice(0, 500); fs.appendFileSync(path.join(sdir(r.session), 'journey/prompts.jsonl'), JSON.stringify({ at: new Date().toISOString(), desk: 'trainer', student: 'demo-' + r.name, game: r.game, week: 3, prompt: note }) + '\n'); log({ ev: 'note', id: r.session }); return { kind: 'note', text: `Sent to ${r.name}'s box: "${note}"`, student: r.session }; }
+  if ((m = low.match(/^(draft|write)\s+(feedback|a note)\s+(for|to)\s+(.+)$/))) { const r = findStudent(board, m[4]); if (!r) return { kind: 'answer', text: `No student called "${m[4]}".` }; if (asks.n >= CAP) return { kind: 'answer', text: 'The daily allowance is used up; drafting needs an AI call.' }; countAsk(); const prompt = `You are a game-programming lecturer writing a short, warm, specific note (max 80 words, plain English, no jargon) to a beginner after their first lab. Their record (JSON): ${JSON.stringify({ name: r.name, checks: r.checks, prompts: r.recent, explains: r.explains, review: r.review })}. Praise one concrete thing, suggest one next thing. Output only the note.`; const rr = await run('claude', ['-p', prompt, '--output-format', 'json'], ROOT, 120000); let out = rr.stdout || rr.out || ''; try { const j = JSON.parse(rr.out); out = j.result || out; } catch { out = rr.out; } return { kind: 'draft', text: String(out).trim().slice(0, 600) || 'The AI did not answer.', student: r.session, hint: `To send it: note ${r.name}: <your edited version>` }; }
+  return { kind: 'help', text: 'I can answer: "who hasn\'t finished the paddle", "who has explained", "who is stuck", "summary", "show Ali", "review Ali", "note Ali: read the clamp line before you go on", "draft feedback for Ali".' };
+}
+
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin; const cors = ORIGINS.includes(origin) ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Headers': 'content-type', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' } : {};
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
@@ -50,6 +84,12 @@ const server = http.createServer(async (req, res) => {
     if ((m = p.match(/^\/files\/([a-f0-9]{8})\/(design|assets)\/([A-Za-z0-9._-]+)$/))) { const f = path.join(sdir(m[1]), m[2], m[3]); if (!fs.existsSync(f) || !/\.(png|jpe?g|svg|webp)$/i.test(f)) { res.writeHead(404, cors); return res.end(); } return sendFile(res, f, cors); }
     if (!p.startsWith('/api/')) { res.writeHead(404, cors); return res.end('demo-desk'); }
     const body = req.method === 'POST' ? await readBody(req) : Object.fromEntries(url.searchParams);
+    if (p.startsWith('/api/trainer/') || p === '/api/class') {
+      if (!TRAINER_PIN || String(body.pin || '') !== TRAINER_PIN) return json(res, 403, { error: 'wrong PIN' }, cors);
+      if (p === '/api/class') return json(res, 200, classBoard(), cors);
+      if (p === '/api/trainer/ask' && req.method === 'POST') { const r = await trainerAsk(body.text); log({ ev: 'trainer', kind: r.kind }); return json(res, 200, { ...r, board: classBoard() }, cors); }
+      return json(res, 404, { error: 'unknown trainer call' }, cors);
+    }
     if (!OPEN && String(body.pin || '') !== PIN) return json(res, 403, { error: 'wrong PIN' }, cors);
     if (p === '/api/session' && req.method === 'POST') {
       if (fs.readdirSync(SESS).length >= MAXS) cleanup();
