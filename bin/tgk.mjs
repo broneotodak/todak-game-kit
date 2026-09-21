@@ -82,7 +82,7 @@ const commands = {
   help() {
     say(`tgk — Todak Game Kit (demonstrator)
 
-  tgk new <template> <name> [--student <id>] [--week <n>]   scaffold a game from a template (pong)
+  tgk new <template> <name> [--student <id>] [--week <n>] [--title "<shown name>"]   scaffold a game from a template (pong)
   tgk ask "<what you want>" [--to auto|design|build]        ONE BOX: routes to the design desk (Codex) or build desk (Claude Code)
   tgk ask --explain "<what changed>"                        explain-back: unlocks the next change
   tgk ask "<text>" --route-only --json                     just the routing decision, nothing runs
@@ -101,7 +101,7 @@ const commands = {
     const src = path.join(KIT, 'templates', template); if (!fs.existsSync(src)) die('no template named ' + template);
     const dst = path.resolve(name); if (fs.existsSync(dst)) die(dst + ' already exists');
     const student = String(flag('student', os.userInfo().username)); const week = Number(flag('week', 3));
-    const gameName = name.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const titleFlag = flag('title', null); const gameName = (titleFlag && titleFlag !== true) ? String(titleFlag).slice(0, 40) : name.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     copyDir(src, dst, { '{{GAME_NAME}}': gameName, '{{GAME_SLUG}}': slug(name), '{{STUDENT}}': student, '{{WEEK}}': String(week) });
     const meta = { kit: 'tgk-demonstrator', template, name: gameName, slug: slug(name), student, week, created: nowIso(), steps: { scaffold: nowIso() } };
     saveMeta(dst, meta);

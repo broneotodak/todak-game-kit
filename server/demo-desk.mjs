@@ -52,7 +52,8 @@ const server = http.createServer(async (req, res) => {
       if (fs.readdirSync(SESS).length >= MAXS) cleanup();
       if (fs.readdirSync(SESS).length >= MAXS) return json(res, 429, { error: 'the demo server is full for now; try later' }, cors);
       const id = crypto.randomBytes(4).toString('hex'); const name = String(body.name || '').replace(/[^a-z0-9-]/gi, '').slice(0, 20) || id;
-      const r = await run('node', [TGK, 'new', 'pong', id, '--student', 'demo-' + name, '--week', '3'], SESS, 60000);
+      const shown = (String(body.name || '').replace(/[^A-Za-z0-9 '-]/g, '').trim().slice(0, 20) || 'Demo') + "'s Pong";
+      const r = await run('node', [TGK, 'new', 'pong', id, '--student', 'demo-' + name, '--week', '3', '--title', shown], SESS, 60000);
       if (r.code !== 0) return json(res, 500, { error: 'could not create the game: ' + (r.err || r.out).slice(-300) }, cors);
       log({ ev: 'session', id, name }); return json(res, 200, { session: id, state: state(id) }, cors);
     }
