@@ -83,6 +83,8 @@ const commands = {
     say(`tgk — Todak Game Kit (demonstrator)
 
   tgk new <template> <name> [--student <id>] [--week <n>]   scaffold a game from a template (pong)
+  tgk ask "<what you want>" [--to auto|design|build]        ONE BOX: routes to the design desk (Codex) or build desk (Claude Code)
+  tgk ask --explain "<what changed>"                        explain-back: unlocks the next change
   tgk run                                                   run the game window
   tgk build web                                             export to build/web (Godot web export)
   tgk publish web                                           put the web build on the showcase, print the link
@@ -181,6 +183,63 @@ const commands = {
     syncJourney(dir, meta, false);
     if (!quick) say(md); else say(`${passed}/${all.length} checks passed → review/report.md`);
   },
+
+  ask() {
+    // One box, two AIs behind it. Routes a student's request to the design desk (Codex/Astra) or the build desk (Claude Code),
+    // with the course rules inside: step gating, explain-back, and a record of every request with the route and the reason.
+    const { dir, meta } = loadGame();
+    const json = args.includes('--json'); const to = String(flag('to', 'auto')); const explain = flag('explain', null);
+    const text = args.slice(1).filter((a, i, arr) => !a.startsWith('--') && !(i > 0 && ['--to', '--explain'].includes(arr[i - 1]))).join(' ').trim();
+    const steps = STEPS[meta.template] || []; const current = steps.find(st => !(meta.steps || {})[st.id]) || null;
+    const out = (o) => { if (json) say(JSON.stringify(o)); else { if (o.notice) say(o.notice); if (o.result) say(o.result); if (o.next) say('\n' + o.next); } };
+    if (explain !== null) {
+      const sentence = String(explain === true ? '' : explain).trim();
+      if (!sentence) { out({ ok: false, notice: 'Tell the desk in one sentence what changed: tgk ask --explain "<sentence>"' }); return; }
+      appendJsonl(path.join(dir, 'journey/prompts.jsonl'), { at: nowIso(), desk: 'explain', student: meta.student, game: meta.slug, week: meta.week, prompt: sentence });
+      meta.awaiting_explain = false; saveMeta(dir, meta);
+      if (!text) { out({ ok: true, notice: 'Thanks. Next step unlocked.', step: current?.id || null }); syncJourneyBg(dir); return; }
+    }
+    if (!text) die('tgk ask "<what you want>" [--to auto|design|build] [--explain "<what changed>"] [--json]');
+    if (meta.awaiting_explain && to !== 'design') {
+      appendJsonl(path.join(dir, 'journey/prompts.jsonl'), { at: nowIso(), desk: 'blocked', student: meta.student, game: meta.slug, week: meta.week, prompt: text, reason: 'awaiting_explain' });
+      out({ ok: false, route: 'blocked', reason: 'awaiting_explain', notice: 'Before the next change: tell the desk in one sentence what the last change did.', next: 'tgk ask --explain "the paddle now moves up with W and down with S"' }); syncJourneyBg(dir); return;
+    }
+    const wholeGame = /\b(whole|entire|complete|everything|full)\b.*\b(game|pong)\b|\bbuild me (a|the|my)\b.*\bgame\b|\bmake (a|the|me a) (whole|full|complete) game\b|\bdo (all|everything)\b/i.test(text);
+    const designWords = /\b(art|artwork|sprite|sprites|draw|drawing|paint|colou?r|colou?rs|palette|moodboard|mood board|character|characters|title screen|logo|icon|design doc|design document|storyboard|sound|music|sfx|font|style|look|theme|background image|texture)\b/i;
+    const buildWords = /\b(code|script|function|move|moves|moving|bounce|bounces|input|key|keys|w and s|bug|error|fix|crash|build|publish|review|run|save|score|scores|win|lose|speed|faster|slower|physics|gdscript|godot|scene|paddle|ball|collision|timer|level)\b/i;
+    let route = to, reason = 'you chose the ' + to + ' desk';
+    if (to === 'auto') {
+      if (wholeGame) { route = 'plan'; reason = 'that is the whole game in one go; the course does it step by step'; }
+      else { const d = designWords.test(text), b = buildWords.test(text);
+        if (d && b) { route = 'both'; reason = 'it asks for artwork and for code'; }
+        else if (d) { route = 'design'; reason = 'it asks for artwork or design'; }
+        else { route = 'build'; reason = b ? 'it asks for code or the game to behave differently' : 'no design words, so the build desk'; } }
+    }
+    appendJsonl(path.join(dir, 'journey/prompts.jsonl'), { at: nowIso(), desk: route === 'both' ? 'both' : route === 'design' ? 'codex' : route === 'build' ? 'claude' : route, student: meta.student, game: meta.slug, week: meta.week, prompt: text, reason, step: current?.id || null });
+    if (route === 'plan') {
+      const plan = steps.map(st => `${(meta.steps || {})[st.id] ? '[x]' : '[ ]'} ${st.label}`).join('\n');
+      out({ ok: true, route, reason, step: current?.id || null, notice: `Not in one go. This week's steps:\n${plan}\nYou are on: ${current ? current.label : 'publish'}. Ask for that.`, next: current?.id === 'paddle' ? 'Try: make the left paddle move with W and S' : current?.id === 'ball' ? 'Try: make the ball launch and bounce off the top, the bottom and the paddles' : '' });
+      syncJourneyBg(dir); return;
+    }
+    const before = gitFiles(dir);
+    const results = [];
+    const stepLine = current ? `The student is on step "${current.label}" (${current.id}) of week ${meta.week}. Keep to that step unless the request is clearly about it; if it is beyond the step, say so in one line and do only what fits.` : `All steps are done; the student is polishing or publishing.`;
+    if (route === 'design' || route === 'both') {
+      const prompt = `You are the DESIGN desk of the Todak Workbench for a beginner. Read AGENTS.md first. ${stepLine} Deliver files into design/ or assets/ (pictures, the design document); do not edit scripts or scenes. Then tell the student in two plain sentences what you made and where it is.\n\nStudent request: ${text}`;
+      const r = runCodex(dir, prompt); results.push({ desk: 'design', tool: 'codex', ok: r.ok, text: r.text });
+    }
+    if (route === 'build' || route === 'both') {
+      const prompt = `${stepLine}\n\nStudent request: ${text}`;
+      const r = runClaude(dir, prompt); results.push({ desk: 'build', tool: 'claude', ok: r.ok, text: r.text });
+      if (r.ok && !/\b(review|publish|run|status)\b/i.test(text)) { meta.awaiting_explain = true; saveMeta(dir, meta); }
+    }
+    const after = gitFiles(dir); const changed = after.filter(f => !before.includes(f)).concat(after.filter(f => before.includes(f)));
+    const summary = results.map(r => `[${r.desk} desk · ${r.tool}] ${r.ok ? '' : '(failed) '}${r.text.trim()}`).join('\n\n');
+    out({ ok: results.every(r => r.ok), route, reason, step: current?.id || null, results, files: gitChanged(dir), awaiting_explain: !!meta.awaiting_explain,
+      notice: `→ ${route === 'both' ? 'design desk (Codex) then build desk (Claude Code)' : route === 'design' ? 'design desk (Codex)' : 'build desk (Claude Code)'}: ${reason}.`, result: summary,
+      next: meta.awaiting_explain ? 'Before the next change, tell the desk what changed: tgk ask --explain "<one sentence>"' : '' });
+    syncJourneyBg(dir);
+  },
   remember() { const { dir } = loadGame(); const note = args.slice(1).join(' ').trim(); if (!note) die('tgk remember "<note>"'); fs.appendFileSync(path.join(dir, 'memory/brain.md'), `- ${nowIso().slice(0, 16).replace('T', ' ')} ${note}\n`); say('Remembered.'); },
   recall() { const { dir } = loadGame(); const t = fs.readFileSync(path.join(dir, 'memory/brain.md'), 'utf8'); const q = args.slice(1).join(' ').toLowerCase(); say(q ? t.split('\n').filter(l => l.toLowerCase().includes(q)).join('\n') || '(nothing matches)' : t); },
   journey() {
@@ -200,6 +259,7 @@ const commands = {
   step() { const { dir, meta } = loadGame(); const [_, what, id] = args; if (what !== 'done' || !id) die('tgk step done <id>'); meta.steps = meta.steps || {}; meta.steps[id] = nowIso(); saveMeta(dir, meta); say('Step done: ' + id); },
   sync() { const { dir, meta } = loadGame(); const n = syncJourney(dir, meta, true); say(n < 0 ? 'Sync skipped (no TGK_INGEST_TOKEN or offline).' : `Synced ${n} new events.`); },
   'log-prompt'() {
+    if (process.env.TGK_NO_HOOK) return;
     const desk = String(flag('desk', 'claude')); const dir = findGame(); if (!dir) return;
     let raw = ''; try { raw = fs.readFileSync(0, 'utf8'); } catch {}
     let prompt = raw; try { const j = JSON.parse(raw); prompt = j.prompt ?? j.user_prompt ?? j.message ?? raw; } catch {}
@@ -229,6 +289,24 @@ function syncJourney(dir, meta, verbose) {
   if (r.status !== 0) { if (verbose) process.stderr.write('sync failed: ' + (r.stdout || r.stderr || '') + '\n'); return -1; }
   fs.writeFileSync(stateFile, JSON.stringify({ prompts: prompts.length, events: events.length }));
   return batch.length;
+}
+
+
+function gitFiles(dir) { const r = spawnSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }); return r.status === 0 ? r.stdout.split('\n').filter(Boolean) : []; }
+function gitChanged(dir) { return gitFiles(dir).map(l => l.slice(3).trim()); }
+function syncJourneyBg(dir) { try { const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'sync'], { cwd: dir, detached: true, stdio: 'ignore' }); child.unref(); } catch {} }
+function runCodex(dir, prompt) {
+  const model = process.env.TGK_CODEX_MODEL || 'gpt-6-astra';
+  const r = spawnSync('codex', ['exec', '-m', model, '--skip-git-repo-check', '-C', dir, prompt], { encoding: 'utf8', timeout: 600000, env: { ...process.env, TGK_NO_HOOK: '1' } });
+  if (r.error) return { ok: false, text: 'Codex is not installed or not signed in (' + r.error.message + ')' };
+  const outText = (r.stdout || '').split('\n').filter(l => !/^(tokens used|\d[\d,]*$|codex$|hook:)/.test(l.trim())).join('\n').trim();
+  return { ok: r.status === 0, text: outText || (r.stderr || '').slice(-600) };
+}
+function runClaude(dir, prompt) {
+  const r = spawnSync('claude', ['-p', prompt, '--permission-mode', 'acceptEdits', '--allowedTools', 'Read,Edit,Write,Grep,Glob,Bash(node *),Bash(tgk *),Bash(git status*),Bash(git diff*)', '--output-format', 'json'], { cwd: dir, encoding: 'utf8', timeout: 600000, env: { ...process.env, TGK_NO_HOOK: '1' } });
+  if (r.error) return { ok: false, text: 'Claude Code is not installed or not signed in (' + r.error.message + ')' };
+  let text = r.stdout || ''; try { const j = JSON.parse(text); text = j.result || j.content || text; if (j.is_error) return { ok: false, text: String(text) }; } catch {}
+  return { ok: r.status === 0, text: String(text).trim() || (r.stderr || '').slice(-600) };
 }
 
 function collectCodex(dir, file) {
