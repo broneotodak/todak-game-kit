@@ -11,7 +11,8 @@ const ROOT = process.env.DEMO_ROOT || path.join(os.homedir(), 'demo-desk'); cons
 const KIT = process.env.TGK_KIT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'); const TGK = path.join(KIT, 'bin/tgk.mjs');
 const CAP = Number(process.env.DEMO_DAILY_CAP || 80); const MAXS = Number(process.env.DEMO_MAX_SESSIONS || 30); const TTL = 24 * 3600 * 1000;
 const ORIGINS = (process.env.DEMO_ORIGINS || 'https://course.neotodak.com,http://localhost:8080').split(',');
-const busy = new Map(); const log = (o) => fs.appendFileSync(path.join(ROOT, 'log.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...o }) + '\n');
+const busy = new Map(); const building = new Map();
+function buildInBackground(id) { if (building.get(id)) return; building.set(id, true); run('node', [TGK, 'build', 'web'], sdir(id), 300000).then(r => { building.delete(id); log({ ev: 'autobuild', id, ok: fs.existsSync(path.join(sdir(id), 'build/web/index.html')) }); }).catch(() => building.delete(id)); } const log = (o) => fs.appendFileSync(path.join(ROOT, 'log.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...o }) + '\n');
 const today = () => new Date().toISOString().slice(0, 10); let asks = { day: today(), n: 0 };
 const countAsk = () => { if (asks.day !== today()) asks = { day: today(), n: 0 }; asks.n++; };
 
@@ -29,7 +30,8 @@ function state(id) {
   const st = spawnSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }); const changed = st.status === 0 ? st.stdout.split('\n').filter(Boolean).map(l => l.slice(3).trim()) : [];
   const built = fs.existsSync(path.join(dir, 'build/web/index.html'));
   let report = null; try { report = fs.readFileSync(path.join(dir, 'review/report.md'), 'utf8'); } catch {}
-  return { session: id, name: meta.name, student: meta.student, week: meta.week, steps: meta.steps || {}, awaiting_explain: !!meta.awaiting_explain, journey, images: imgs, changed, built, gameUrl: built ? `/games/${id}/` : null, report, busy: !!busy.get(id), asksToday: asks.n, cap: CAP };
+  const builtAt = built ? fs.statSync(path.join(dir, 'build/web/index.html')).mtimeMs : 0;
+  return { session: id, name: meta.name, student: meta.student, week: meta.week, steps: meta.steps || {}, awaiting_explain: !!meta.awaiting_explain, journey, images: imgs, changed, built, builtAt, building: !!building.get(id), gameUrl: built ? `/games/${id}/` : null, report, busy: !!busy.get(id), asksToday: asks.n, cap: CAP };
 }
 function diffOf(id) { const dir = sdir(id); const r = spawnSync('git', ['diff', '--', 'scripts', 'scenes', 'project.godot'], { cwd: dir, encoding: 'utf8', maxBuffer: 1e7 }); return (r.stdout || '').slice(0, 30000); }
 function commit(id, msg) { const dir = sdir(id); spawnSync('git', ['add', '-A'], { cwd: dir }); spawnSync('git', ['-c', 'user.name=demo-desk', '-c', 'user.email=demo@todak.com', 'commit', '-q', '-m', msg.slice(0, 120)], { cwd: dir }); }
@@ -56,7 +58,7 @@ const server = http.createServer(async (req, res) => {
       const shown = (String(body.name || '').replace(/[^A-Za-z0-9 '-]/g, '').trim().slice(0, 20) || 'Demo') + "'s Pong";
       const r = await run('node', [TGK, 'new', 'pong', id, '--student', 'demo-' + name, '--week', '3', '--title', shown], SESS, 60000);
       if (r.code !== 0) return json(res, 500, { error: 'could not create the game: ' + (r.err || r.out).slice(-300) }, cors);
-      log({ ev: 'session', id, name }); return json(res, 200, { session: id, state: state(id) }, cors);
+      log({ ev: 'session', id, name }); buildInBackground(id); return json(res, 200, { session: id, state: state(id) }, cors);
     }
     const id = sid(body.session); if (!id || !fs.existsSync(sdir(id))) return json(res, 404, { error: 'no such session (start a new one)' }, cors);
     if (p === '/api/state') return json(res, 200, state(id), cors);
@@ -71,9 +73,10 @@ const server = http.createServer(async (req, res) => {
       const out = lastJson(r.out) || { ok: false, route: 'error', notice: 'the desk did not answer: ' + (r.err || r.out).slice(-300) };
       const diff = diffOf(id); if (out.ok && (out.route === 'build' || out.route === 'both')) commit(id, text || 'change');
       log({ ev: 'ask', id, route: out.route, ms: Date.now() - t0, ok: out.ok }); fs.utimesSync(sdir(id), new Date(), new Date());
+      if (out.ok && (out.route === 'build' || out.route === 'both')) buildInBackground(id);
       return json(res, 200, { ...out, diff, state: state(id), ms: Date.now() - t0 }, cors);
     }
-    if (p === '/api/build' && req.method === 'POST') { busy.set(id, true); const r = await run('node', [TGK, 'build', 'web'], sdir(id), 300000); busy.delete(id); const ok = fs.existsSync(path.join(sdir(id), 'build/web/index.html')); log({ ev: 'build', id, ok }); return json(res, ok ? 200 : 500, { ok, gameUrl: ok ? `/games/${id}/` : null, out: (r.out + r.err).slice(-400), state: state(id) }, cors); }
+    if (p === '/api/build' && req.method === 'POST') { if (building.get(id)) return json(res, 200, { ok: true, building: true, state: state(id) }, cors); busy.set(id, true); const r = await run('node', [TGK, 'build', 'web'], sdir(id), 300000); busy.delete(id); const ok = fs.existsSync(path.join(sdir(id), 'build/web/index.html')); log({ ev: 'build', id, ok }); return json(res, ok ? 200 : 500, { ok, gameUrl: ok ? `/games/${id}/` : null, out: (r.out + r.err).slice(-400), state: state(id) }, cors); }
     if (p === '/api/review' && req.method === 'POST') { busy.set(id, true); const r = await run('node', [TGK, 'review', '--quick'], sdir(id), 180000); busy.delete(id); log({ ev: 'review', id }); return json(res, 200, { ok: r.code === 0, out: r.out.trim().slice(-200), state: state(id) }, cors); }
     if (p === '/api/reset' && req.method === 'POST') { fs.rmSync(sdir(id), { recursive: true, force: true }); return json(res, 200, { ok: true }, cors); }
     return json(res, 404, { error: 'unknown call' }, cors);
