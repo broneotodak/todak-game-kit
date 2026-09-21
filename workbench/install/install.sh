@@ -8,7 +8,7 @@ echo "Todak Workbench installer · kit at $KIT"
 command -v node >/dev/null || { echo "Node 18+ is required (https://nodejs.org)"; exit 1; }
 command -v code >/dev/null || { echo "VS Code's 'code' command is required (VS Code → Command Palette → Shell Command: Install 'code' command)"; exit 1; }
 for ext in anthropic.claude-code openai.chatgpt geequlim.godot-tools; do code --install-extension "$ext" --force >/dev/null && echo "  extension: $ext"; done
-if ls "$KIT"/workbench/todak-sidebar/*.vsix >/dev/null 2>&1; then code --install-extension "$KIT"/workbench/todak-sidebar/*.vsix --force >/dev/null && echo "  extension: Todak sidebar"; else echo "  (Todak sidebar .vsix not built yet; see workbench/todak-sidebar/README.md)"; fi
+VSIX="$(ls "$KIT"/workbench/todak-sidebar/*.vsix 2>/dev/null | sort -V | tail -1)"; if [ -n "$VSIX" ]; then code --install-extension "$VSIX" --force >/dev/null && echo "  extension: Todak sidebar ($(basename "$VSIX"))"; else echo "  (Todak sidebar .vsix not built yet; see workbench/todak-sidebar/README.md)"; fi
 # Godot 4.7.2
 OS="$(uname -s)"; GODOT_DIR="$HOME/.todak/godot"; mkdir -p "$GODOT_DIR"
 if [ -z "${GODOT_BIN:-}" ]; then

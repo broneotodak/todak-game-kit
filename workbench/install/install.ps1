@@ -6,7 +6,7 @@ Write-Host "Todak Workbench installer · kit at $Kit"
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw "Node 18+ is required (https://nodejs.org)" }
 if (-not (Get-Command code -ErrorAction SilentlyContinue)) { throw "VS Code's 'code' command is required (tick 'Add to PATH' in the VS Code installer)" }
 foreach ($ext in @("anthropic.claude-code","openai.chatgpt","geequlim.godot-tools")) { code --install-extension $ext --force | Out-Null; Write-Host "  extension: $ext" }
-$vsix = Get-ChildItem (Join-Path $Kit "workbench\todak-sidebar") -Filter *.vsix -ErrorAction SilentlyContinue | Select-Object -First 1
+$vsix = Get-ChildItem (Join-Path $Kit "workbench\todak-sidebar") -Filter *.vsix -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object -Last 1
 if ($vsix) { code --install-extension $vsix.FullName --force | Out-Null; Write-Host "  extension: Todak sidebar" } else { Write-Host "  (Todak sidebar .vsix not built yet)" }
 $GodotDir = Join-Path $env:USERPROFILE ".todak\godot"; New-Item -ItemType Directory -Force -Path $GodotDir | Out-Null
 $GodotExe = Join-Path $GodotDir "Godot_v4.7.2-stable_win64.exe"
