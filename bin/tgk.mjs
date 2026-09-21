@@ -85,6 +85,7 @@ const commands = {
   tgk new <template> <name> [--student <id>] [--week <n>]   scaffold a game from a template (pong)
   tgk ask "<what you want>" [--to auto|design|build]        ONE BOX: routes to the design desk (Codex) or build desk (Claude Code)
   tgk ask --explain "<what changed>"                        explain-back: unlocks the next change
+  tgk ask "<text>" --route-only --json                     just the routing decision, nothing runs
   tgk run                                                   run the game window
   tgk build web                                             export to build/web (Godot web export)
   tgk publish web                                           put the web build on the showcase, print the link
@@ -190,6 +191,7 @@ const commands = {
     const { dir, meta } = loadGame();
     const json = args.includes('--json'); const to = String(flag('to', 'auto')); const explain = flag('explain', null);
     const text = args.slice(1).filter((a, i, arr) => !a.startsWith('--') && !(i > 0 && ['--to', '--explain'].includes(arr[i - 1]))).join(' ').trim();
+    // --route-only: decide the desk without running anything (the web demo shows the badge first)
     const steps = STEPS[meta.template] || []; const current = steps.find(st => !(meta.steps || {})[st.id]) || null;
     const out = (o) => { if (json) say(JSON.stringify(o)); else { if (o.notice) say(o.notice); if (o.result) say(o.result); if (o.next) say('\n' + o.next); } };
     if (explain !== null) {
@@ -206,7 +208,8 @@ const commands = {
     }
     const wholeGame = /\b(whole|entire|complete|everything|full)\b.*\b(game|pong)\b|\bbuild me (a|the|my)\b.*\bgame\b|\bmake (a|the|me a) (whole|full|complete) game\b|\bdo (all|everything)\b/i.test(text);
     const designWords = /\b(art|artwork|sprite|sprites|draw|drawing|paint|colou?r|colou?rs|palette|moodboard|mood board|character|characters|title screen|logo|icon|design doc|design document|storyboard|sound|music|sfx|font|style|look|theme|background image|texture)\b/i;
-    const buildWords = /\b(code|script|function|move|moves|moving|bounce|bounces|input|key|keys|w and s|bug|error|fix|crash|build|publish|review|run|save|score|scores|win|lose|speed|faster|slower|physics|gdscript|godot|scene|paddle|ball|collision|timer|level)\b/i;
+    // strong build verbs decide; game nouns (paddle, ball, score) alone do not, so 'draw me a pink ball' stays a design request
+    const buildWords = /\b(code|script|function|move|moves|moving|bounce|bounces|input|keys?|w and s|bug|error|fix|crash|build|publish|review|run|save|scores?|win|lose|speed|faster|slower|physics|gdscript|godot|scene|collision|timer|level|make it|change the)\b/i;
     let route = to, reason = 'you chose the ' + to + ' desk';
     if (to === 'auto') {
       if (wholeGame) { route = 'plan'; reason = 'that is the whole game in one go; the course does it step by step'; }
@@ -215,6 +218,7 @@ const commands = {
         else if (d) { route = 'design'; reason = 'it asks for artwork or design'; }
         else { route = 'build'; reason = b ? 'it asks for code or the game to behave differently' : 'no design words, so the build desk'; } }
     }
+    if (args.includes('--route-only')) { out({ ok: true, route, reason, step: current?.id || null, awaiting_explain: !!meta.awaiting_explain }); return; }
     appendJsonl(path.join(dir, 'journey/prompts.jsonl'), { at: nowIso(), desk: route === 'both' ? 'both' : route === 'design' ? 'codex' : route === 'build' ? 'claude' : route, student: meta.student, game: meta.slug, week: meta.week, prompt: text, reason, step: current?.id || null });
     if (route === 'plan') {
       const plan = steps.map(st => `${(meta.steps || {})[st.id] ? '[x]' : '[ ]'} ${st.label}`).join('\n');
