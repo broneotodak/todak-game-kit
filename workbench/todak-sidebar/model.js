@@ -30,7 +30,7 @@ async function metadata(root) {
   if (!meta || typeof meta !== 'object' || Array.isArray(meta) || typeof meta.name !== 'string' || typeof meta.template !== 'string') {
     throw new Error('.tgk.json needs a game name and template.');
   }
-  return { name: meta.name, template: meta.template, student: String(meta.student ?? ''), week: String(meta.week ?? ''), steps: meta.steps || {} };
+  return { name: meta.name, template: meta.template, student: String(meta.student ?? ''), week: String(meta.week ?? ''), steps: meta.steps || {}, awaiting_explain: meta.awaiting_explain === true };
 }
 async function images(root) {
   const result = [];

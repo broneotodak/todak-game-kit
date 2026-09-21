@@ -1,6 +1,6 @@
 # Todak sidebar
 
-A local VS Code sidebar for the Todak Game Kit demonstrator. Plain JavaScript, no bundler, runtime dependencies, network requests or telemetry. Requires desktop VS Code 1.85+ and Node 18+ on PATH for kit commands.
+A local VS Code sidebar for the Todak Game Kit demonstrator. Plain JavaScript, no bundler, runtime dependencies, added network client or telemetry. The Desk delegates AI requests to the kit and the student’s existing tools. Requires desktop VS Code 1.85+ and Node 18+ on PATH for kit commands.
 
 ## Install from this folder
 
@@ -10,7 +10,7 @@ Package locally, then install the file. This does not publish to the Marketplace
 cd workbench/todak-sidebar
 npm test
 npx @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license
-code --install-extension ./todak-sidebar-0.1.0.vsix
+code --install-extension ./todak-sidebar-0.2.0.vsix
 ```
 
 The packaging command needs the `@vscode/vsce` tool. On an offline machine where it is already cached, use `npx --offline @vscode/vsce package --no-dependencies --allow-missing-repository --skip-license`. No `npm install` is needed to run or test the extension itself. The VSIX is ignored by Git. Reload VS Code if prompted, open a game folder and select **Todak** in the activity bar.
@@ -43,6 +43,20 @@ For example, in VS Code settings:
 
 On Windows, forward slashes work in JSON, for example `C:/course/todak-game-kit`. Relaunch VS Code after changing its environment. Godot and publishing configuration remain the kit's responsibility (`GODOT_BIN`, `TGK_SHOWCASE_REPO`, and optionally `TGK_SHOWCASE_URL`).
 
+## The Desk
+
+The **Desk** sits above your steps. Type one small request, leave **To: Auto** selected, and press **Enter** or **Send**. **Shift+Enter** adds a line. Choose **Design** or **Build** to send directly to that desk. Replies show who handled the request, why, their text, and files you can open.
+
+- A whole-game request in Auto gets the kit’s step plan. Click its suggested prompt to fill the input.
+- **Send to the other desk instead** resends the same request. For a reply from both desks, a plan, or a blocked Auto request, the link offers Design and Build explicitly.
+- After a change that needs explain-back, the composer asks **What did that change do? One sentence.** Send that explanation to unlock the next request. The normal composer and overrides stay disabled until then.
+- The conversation is saved in this workspace, separately for each game folder. **Clear** removes the displayed conversation; it does not clear the game’s journey or unlock explain-back.
+- A working message stays visible until the synchronous kit command finishes. With Auto, the actual route is only known after the reply. Do not reload during a run; if a reload interrupts the reply, the saved request is marked for checking and is never sent again automatically.
+
+The Desk runs `node <kit>/bin/tgk.mjs ask ... --json` as a child process, using literal arguments and the game as its working directory. It does not open a terminal or stream output. Only one request runs at a time. AI tools and journey syncing remain the kit’s responsibility. No AI calls run in this extension’s tests.
+
+Open files only through chips from saved replies; files outside the game (including symlinks out of it) cannot be opened through a chip. Missing or renamed files show a plain error. The kit must provide ordinary relative paths; quoted Git porcelain paths and rename descriptions need normalization in the router.
+
 ## What it does
 
 - Shows game, student, week and completed template steps. Progress is read-only; the kit updates it.
@@ -62,7 +76,7 @@ All seven actions are also available under **Todak** in the Command Palette. In 
 npm test
 ```
 
-Twelve Node tests cover an actual scaffold, parent discovery, kit path precedence, prompt parsing, report parsing, gallery changes, mocked VS Code command/watcher behavior, trust checks, and PNG dimensions/palette/transparency. These tests run from the kit checkout; tests are excluded from the VSIX.
+Twenty-four Node tests cover router reply shapes and mocked child processes, conversation persistence and explain-back, other-desk overrides, file boundaries, failure recovery, plus an actual scaffold, parent discovery, kit path precedence, prompt parsing, report parsing, gallery changes, mocked VS Code command/watcher behavior, trust checks, and PNG dimensions/palette/transparency. These tests run from the kit checkout; tests are excluded from the VSIX.
 
 An optional browser smoke check uses an **already installed** Playwright and Chromium; it downloads nothing:
 
@@ -70,6 +84,6 @@ An optional browser smoke check uses an **already installed** Playwright and Chr
 node test/browser-smoke.cjs /path/to/playwright /path/to/chrome /tmp/todak-preview
 ```
 
-It checks keyboard actions, focus retention, safe rendering, empty/trust states, button sizes, widths 260/320/400, light/dark/high contrast, and saves previews. It uses sample game data and a mocked VS Code message bridge, not a running extension host. Native VS Code and Windows checks remain part of the integration handoff in `docs/design/SIDEBAR-NOTES.md`.
+It checks all Desk routes, keyboard submission, Shift+Enter, busy states, explain-back, overrides, file chips, Clear/reload, drafts and focus, safe rendering, empty/trust states, button sizes, widths 260/320/400, light/dark/high contrast, and saves previews. It uses sample game data and a mocked VS Code message bridge, not a running extension host. Native VS Code and Windows checks remain part of the integration handoff in `docs/design/DESK-NOTES.md`.
 
 Demonstrator, not the kit.

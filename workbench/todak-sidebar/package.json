@@ -1,8 +1,8 @@
 {
   "name": "todak-sidebar",
   "displayName": "Todak",
-  "description": "Steps, art and prompt journey for the Todak Game Kit demonstrator.",
-  "version": "0.1.0",
+  "description": "One Todak desk for design and build, with your game steps, art and journey.",
+  "version": "0.2.0",
   "publisher": "todak",
   "private": true,
   "license": "UNLICENSED",

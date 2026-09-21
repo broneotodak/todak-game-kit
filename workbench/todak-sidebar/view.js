@@ -23,6 +23,27 @@ function html({ source, css, script }) {
   </div>
   <p id="error" class="notice error" role="status" hidden></p>
   <p id="trust" class="notice" hidden>Trust this workspace to run game commands.</p>
+  <section id="desk-section" aria-labelledby="desk-heading">
+    <div class="section-heading desk-heading"><h2 id="desk-heading">Desk</h2><button id="desk-clear" type="button" class="text-button">Clear</button></div>
+    <p id="desk-empty" class="muted">What would you like to make? Start with one small change.</p>
+    <ol id="desk-messages" class="desk-messages" role="log" aria-label="Your conversation with the Todak desk" aria-live="polite" aria-relevant="additions text" tabindex="0" hidden></ol>
+    <p id="desk-working" class="desk-working" role="status" hidden></p>
+    <p id="desk-error" class="notice error" role="status" hidden></p>
+    <div class="composer">
+      <p id="desk-lock" class="composer-notice" role="status" hidden></p>
+      <form id="desk-form">
+        <label for="desk-input">Tell the desk what you want to do.</label>
+        <textarea id="desk-input" rows="3" maxlength="12000" placeholder="Make the left paddle move with W and S." aria-describedby="desk-help desk-lock" disabled></textarea>
+        <div class="composer-actions"><label class="to-label" for="desk-to">To <select id="desk-to" disabled><option value="auto">Auto</option><option value="design">Design</option><option value="build">Build</option></select></label><button id="desk-send" class="primary" type="submit" disabled>Send</button></div>
+      </form>
+      <form id="explain-form" hidden>
+        <label for="explain-input">What did that change do? One sentence.</label>
+        <textarea id="explain-input" rows="3" maxlength="12000" placeholder="The paddle now…" aria-describedby="desk-help desk-lock" disabled></textarea>
+        <button id="explain-send" class="primary wide" type="submit" disabled>Send explanation</button>
+      </form>
+      <p id="desk-help" class="composer-help">Enter to send · Shift+Enter for a new line</p>
+    </div>
+  </section>
   <div id="game" hidden>
     <section aria-labelledby="steps-heading">
       <div class="section-heading"><h2 id="steps-heading">Today's steps</h2><span id="progress" class="count"></span></div>

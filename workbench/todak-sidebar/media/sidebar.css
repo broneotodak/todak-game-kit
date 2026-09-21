@@ -65,3 +65,56 @@ time { color: var(--soft); font-size: 10px; font-variant-numeric: tabular-nums; 
 .error { color: var(--warn); }
 footer { position: fixed; bottom: 0; width: 100%; padding: 10px 16px; background: var(--bg); border-top: 1px solid var(--line); color: var(--soft); font-size: 10px; }
 @media (forced-colors: active) { button, .step-mark, .art, footer { border-color: ButtonText; } }
+
+/* One composer, with the route and the reason kept beside each reply. */
+.desk-heading { align-items: center; margin-bottom: 8px; }
+button.text-button { background: transparent; border-color: transparent; color: var(--accent); padding: 8px 0; text-align: left; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; }
+button.text-button:hover { color: var(--ink); }
+.desk-messages { list-style: none; padding: 3px; margin: 0 -3px; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.exchange + .exchange { margin-top: 18px; }
+.student-message { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.speaker { display: block; font-size: 10px; color: var(--soft); margin-bottom: 4px; }
+.desk-reply { border-left: 2px solid var(--line); padding: 12px 0 0 12px; margin-top: 10px; min-width: 0; }
+.route-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.route-badge { border: 1px solid currentColor; border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.route-design { color: #65d5ea; }
+.route-build { color: #73d9a8; }
+.route-plan, .route-blocked { color: #e9b76b; }
+body.vscode-light .route-design { color: #00677c; }
+body.vscode-light .route-build { color: #176840; }
+body.vscode-light .route-plan, body.vscode-light .route-blocked { color: #855000; }
+.route-reason { color: var(--soft); font-size: 11px; margin: 8px 0 12px; overflow-wrap: anywhere; }
+.reply-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+.result-body + .result-body { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+.reply-code { max-width: 100%; overflow-x: auto; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; tab-size: 2; }
+.reply-code code { font-family: var(--vscode-editor-font-family, monospace); }
+.file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+button.file-chip, button.suggestion-chip { text-align: left; font-size: 11px; padding: 8px; max-width: 100%; overflow-wrap: anywhere; background: var(--surface); }
+button.suggestion-chip { width: 100%; margin-top: 12px; color: var(--accent); }
+.override { width: 100%; margin-top: 4px; overflow-wrap: anywhere; }
+.override-choices { display: flex; flex-wrap: wrap; gap: 16px; }
+.plan-steps { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
+.plan-steps li { display: flex; gap: 8px; }
+.plan-mark { flex: 0 0 16px; }
+.plan-steps .done .plan-mark { color: var(--good); }
+.system-line { font-size: 11px; color: var(--soft); overflow-wrap: anywhere; }
+.system-line.error { color: var(--warn); }
+.desk-working { border-left: 2px solid var(--accent); padding: 8px 10px; margin-top: 12px; color: var(--accent); overflow-wrap: anywhere; }
+.composer { border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin-top: 16px; }
+.composer label { display: block; font-size: 12px; font-weight: 600; }
+textarea, select { font: inherit; color: var(--vscode-input-foreground, var(--ink)); background: var(--vscode-input-background, var(--surface)); border: 1px solid var(--vscode-input-border, var(--line)); border-radius: 4px; }
+textarea { width: 100%; resize: vertical; min-height: 86px; max-height: 260px; padding: 9px; margin: 8px 0; line-height: 1.5; }
+textarea::placeholder { color: var(--vscode-input-placeholderForeground, var(--soft)); }
+textarea:disabled, select:disabled { opacity: .6; }
+textarea:focus-visible, select:focus-visible, .desk-messages:focus-visible, .reply-code:focus-visible { outline: 2px solid var(--vscode-focusBorder, #86b2ce); outline-offset: 2px; }
+.composer-actions { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.composer .to-label { display: flex; gap: 6px; align-items: center; color: var(--soft); font-size: 11px; font-weight: 400; min-width: 0; }
+select { min-height: 44px; min-width: 0; max-width: 100%; padding: 6px; }
+.composer-actions .primary { flex: 0 0 auto; }
+.composer-notice { color: var(--warn); font-size: 11px; margin-bottom: 10px; }
+.composer-help { color: var(--soft); font-size: 10px; margin-top: 10px; }
+@media (forced-colors: active) {
+  .route-badge, .student-message, .composer, textarea, select, .reply-code { border-color: CanvasText; color: CanvasText; }
+  .desk-reply, .desk-working { border-color: Highlight; }
+  button.text-button { color: LinkText; }
+}

@@ -3,6 +3,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const model = require('./model');
 const { html } = require('./view');
+const desk = require('./desk');
+const { randomUUID } = require('node:crypto');
 
 class TodakSidebar {
   constructor(context) {
@@ -13,6 +15,11 @@ class TodakSidebar {
     this.gameWatchers = [];
     this.revision = 0;
     this.disposed = false;
+    this.conversations = new Map();
+    this.deskErrors = new Map();
+    this.replyGates = new Map();
+    this.busy = null;
+    this.requestBusy = false;
     this.resetDiscovery();
     this.timer = setInterval(() => this.refresh(), 30000); // Saved becomes idle without a file edit.
   }
@@ -58,6 +65,7 @@ class TodakSidebar {
       this.setRoot(root);
       this.images = new Map(state.images.map(art => [art.relative, art.file]));
       state.trusted = vscode.workspace.isTrusted;
+      state.desk = this.deskState(root, state.meta);
       if (this.view) {
         state.images = state.images.map(art => ({ name: art.name, relative: art.relative,
           url: this.view.webview.asWebviewUri(vscode.Uri.file(art.file)).with({ query: `v=${art.mtime}` }).toString() }));
@@ -67,6 +75,7 @@ class TodakSidebar {
       if (this.disposed || revision !== this.revision) return;
       this.setRoot(null);
       await this.view?.webview.postMessage({ type: 'state', state: { ...await model.snapshot(null), trusted: vscode.workspace.isTrusted,
+        desk: this.deskState(null, null),
         error: 'Could not read the game folder. Check its file permissions and reopen it.' } });
     }
   }
@@ -87,7 +96,21 @@ class TodakSidebar {
     try {
       if (!message || typeof message !== 'object') return;
       if (message.type === 'ready') await this.refresh();
-      else if (message.type === 'command' && ['run', 'build', 'publish', 'review', 'new', 'openJourney', 'openReport'].includes(message.command)) {
+      else if (message.type === 'deskSend' || message.type === 'deskOverride') await this.ask(message);
+      else if (message.type === 'deskClear') {
+        const root = await this.messageGame(message);
+        if (this.requestBusy) return;
+        this.conversations.set(root, []);
+        await this.saveConversation(root);
+        this.deskErrors.delete(root);
+        await this.refresh();
+      } else if (message.type === 'deskFile') {
+        const root = await this.messageGame(message);
+        const entry = this.conversation(root).find(item => item.id === message.id);
+        if (!entry?.reply?.files.includes(message.path)) return;
+        const file = await desk.changedFile(root, message.path);
+        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file));
+      } else if (message.type === 'command' && ['run', 'build', 'publish', 'review', 'new', 'openJourney', 'openReport'].includes(message.command)) {
         await vscode.commands.executeCommand(`todak.${message.command}`);
       } else if (message.type === 'image' && typeof message.path === 'string' && this.images.has(message.path)) {
         // Re-list before opening: reject deleted / replaced / symlinked gallery entries.
@@ -95,6 +118,80 @@ class TodakSidebar {
         if (art) await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(art.file));
       }
     } catch (error) { this.error(error); }
+  }
+  conversation(root) {
+    if (!root) return [];
+    if (!this.conversations.has(root)) {
+      const stored = this.context.workspaceState.get(`todak.desk.v1:${root}`, []);
+      const entries = Array.isArray(stored) ? JSON.parse(JSON.stringify(stored)) : [];
+      for (const entry of entries) if (entry.pending) {
+        entry.pending = false;
+        entry.error = 'The sidebar reloaded before this reply arrived. Check your files and journey before sending again.';
+      }
+      this.conversations.set(root, entries);
+    }
+    return this.conversations.get(root);
+  }
+  async saveConversation(root) {
+    await this.context.workspaceState.update(`todak.desk.v1:${root}`, JSON.parse(JSON.stringify(this.conversation(root))));
+  }
+  deskState(root, meta) {
+    // Honor the reply immediately, even if a metadata watcher caught an earlier
+    // snapshot. Once the file agrees, it owns future unlocks (including terminal use).
+    if (meta && this.replyGates.get(root) === meta.awaiting_explain) this.replyGates.delete(root);
+    return { entries: this.conversation(root), busy: this.busy,
+      awaitingExplain: this.replyGates.get(root) ?? Boolean(meta?.awaiting_explain), error: this.deskErrors.get(root) || '' };
+  }
+  async messageGame(message) {
+    const root = await this.game();
+    if (message.root !== root) throw new Error('The game folder changed. Send your request from the current game.');
+    return root;
+  }
+  async ask(message) {
+    if (this.requestBusy) return;
+    this.requestBusy = true; // Reserve before any await; duplicate clicks cannot start a second AI.
+    let root, entry;
+    try {
+      this.requireTrust();
+      root = await this.messageGame(message);
+      const meta = await model.metadata(root);
+      let input;
+      if (message.type === 'deskOverride') {
+        const original = this.conversation(root).find(item => item.id === message.id && item.kind === 'ask');
+        if (!original || !desk.otherDesks(original).includes(message.to)) throw new Error('Choose the other desk from a reply.');
+        input = desk.request({ text: original.text, to: message.to });
+      } else input = desk.request(message);
+      const awaitingExplain = this.deskState(root, meta).awaitingExplain;
+      if (awaitingExplain && input.kind !== 'explain') throw new Error('Explain the last change to unlock your next request.');
+      if (!awaitingExplain && input.kind === 'explain') throw new Error('Your next request is already unlocked.');
+      const cli = await this.kit(root);
+      // Trust can change while discovery/kit checks are in flight.
+      this.requireTrust();
+      if (root !== await this.game()) throw new Error('The game folder changed. Send your request from the current game.');
+      entry = { id: randomUUID(), ...input, pending: true };
+      this.conversation(root).push(entry);
+      this.deskErrors.delete(root);
+      this.busy = { root, id: entry.id, to: input.to, kind: input.kind };
+      await this.saveConversation(root);
+      await this.refresh();
+      entry.reply = await desk.run(cli, root, input);
+      if (entry.reply.awaiting_explain || entry.reply.results.length || input.kind === 'explain' && entry.reply.ok) {
+        this.replyGates.set(root, entry.reply.awaiting_explain);
+      }
+    } catch (error) {
+      if (entry) entry.error = error.message;
+      else if (root) this.deskErrors.set(root, error.message);
+      else this.error(error);
+    } finally {
+      if (entry) {
+        entry.pending = false;
+        try { await this.saveConversation(root); }
+        catch { this.deskErrors.set(root, 'This conversation could not be saved. Keep this window open to read it.'); }
+      }
+      this.busy = null;
+      this.requestBusy = false;
+      await this.refresh(); // The router may have recorded a prompt, changed art, or ticked a step.
+    }
   }
   error(error) { vscode.window.showErrorMessage(`Todak: ${error.message || 'The action could not finish.'}`); }
   requireTrust() {
