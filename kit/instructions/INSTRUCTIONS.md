@@ -24,7 +24,7 @@ Only one desk is open at a time until week 7. Hand work across as files plus a s
 ## This week's steps ({{TEMPLATE}})
 1. Scaffold (done by `tgk new`).
 2. **Paddle moves** — the left paddle should move up and down with W and S. Look in `scripts/paddle.gd`.
-3. **Ball bounces** — the ball launches from the middle and bounces off the top, the bottom and both paddles. Look in `scripts/ball.gd`.
+3. **Ball bounces** — the ball already flies across the table; make it bounce off the top, the bottom and both paddles, and give the serve a little angle. Look in `scripts/ball.gd`.
 4. **Publish to web** — `tgk review`, then `tgk publish web`.
 
 ## Godot facts that save time
