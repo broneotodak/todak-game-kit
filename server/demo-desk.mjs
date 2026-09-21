@@ -6,7 +6,8 @@ import { spawn, spawnSync } from 'node:child_process';
 
 const PORT = Number(process.env.DEMO_PORT || 3860);
 const OPEN = process.env.DEMO_OPEN === '1';
-const TRAINER_PIN = process.env.DEMO_TRAINER_PIN || process.env.DEMO_PIN || ''; // the trainer's page is always gated, even when the student demo is open // open demo: no PIN, only the daily cap and the session limit protect it
+const TRAINER_OPEN = process.env.DEMO_TRAINER_OPEN === '1'; // demo: the trainer's page can be open too (Neo, 21 Sep)
+const TRAINER_PIN = process.env.DEMO_TRAINER_PIN || process.env.DEMO_PIN || ''; // open demo: no PIN, only the daily cap and the session limit protect it
 const PIN = process.env.DEMO_PIN || ''; if (!OPEN && !PIN) { console.error('DEMO_PIN missing (or set DEMO_OPEN=1)'); process.exit(1); }
 const ROOT = process.env.DEMO_ROOT || path.join(os.homedir(), 'demo-desk'); const SESS = path.join(ROOT, 'sessions'); fs.mkdirSync(SESS, { recursive: true });
 const KIT = process.env.TGK_KIT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'); const TGK = path.join(KIT, 'bin/tgk.mjs');
@@ -81,7 +82,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
   const url = new URL(req.url, 'http://x'); const p = url.pathname;
   try {
-    if (p === '/health' || p === '/api/health') return json(res, 200, { ok: true, open: OPEN, sessions: fs.readdirSync(SESS).length, asksToday: asks.n, cap: CAP }, cors);
+    if (p === '/health' || p === '/api/health') return json(res, 200, { ok: true, open: OPEN, trainerOpen: TRAINER_OPEN, sessions: fs.readdirSync(SESS).length, asksToday: asks.n, cap: CAP }, cors);
     // static: games and design files (no PIN: builds are public on the showcase anyway; ids are unguessable)
     let m;
     if ((m = p.match(/^\/games\/([a-f0-9]{8})\/(.*)$/))) { const f = path.join(sdir(m[1]), 'build/web', m[2] || 'index.html'); if (!f.startsWith(sdir(m[1])) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { const idx = path.join(sdir(m[1]), 'build/web/index.html'); if (!m[2] && fs.existsSync(idx)) return sendFile(res, idx, cors); res.writeHead(404, cors); return res.end('not built'); } return sendFile(res, f, cors); }
@@ -89,7 +90,7 @@ const server = http.createServer(async (req, res) => {
     if (!p.startsWith('/api/')) { res.writeHead(404, cors); return res.end('demo-desk'); }
     const body = req.method === 'POST' ? await readBody(req) : Object.fromEntries(url.searchParams);
     if (p.startsWith('/api/trainer/') || p === '/api/class') {
-      if (!TRAINER_PIN || String(body.pin || '') !== TRAINER_PIN) return json(res, 403, { error: 'wrong PIN' }, cors);
+      if (!TRAINER_OPEN && (!TRAINER_PIN || String(body.pin || '') !== TRAINER_PIN)) return json(res, 403, { error: 'wrong PIN' }, cors);
       if (p === '/api/class') return json(res, 200, classBoard(), cors);
       if (p === '/api/trainer/ask' && req.method === 'POST') { const r = await trainerAsk(body.text); log({ ev: 'trainer', kind: r.kind }); return json(res, 200, { ...r, board: classBoard() }, cors); }
       return json(res, 404, { error: 'unknown trainer call' }, cors);
