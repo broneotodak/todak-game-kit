@@ -5,7 +5,8 @@ import http from 'node:http'; import fs from 'node:fs'; import path from 'node:p
 import { spawn, spawnSync } from 'node:child_process';
 
 const PORT = Number(process.env.DEMO_PORT || 3860);
-const PIN = process.env.DEMO_PIN || ''; if (!PIN) { console.error('DEMO_PIN missing'); process.exit(1); }
+const OPEN = process.env.DEMO_OPEN === '1'; // open demo: no PIN, only the daily cap and the session limit protect it
+const PIN = process.env.DEMO_PIN || ''; if (!OPEN && !PIN) { console.error('DEMO_PIN missing (or set DEMO_OPEN=1)'); process.exit(1); }
 const ROOT = process.env.DEMO_ROOT || path.join(os.homedir(), 'demo-desk'); const SESS = path.join(ROOT, 'sessions'); fs.mkdirSync(SESS, { recursive: true });
 const KIT = process.env.TGK_KIT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'); const TGK = path.join(KIT, 'bin/tgk.mjs');
 const CAP = Number(process.env.DEMO_DAILY_CAP || 80); const MAXS = Number(process.env.DEMO_MAX_SESSIONS || 30); const TTL = 24 * 3600 * 1000;
@@ -40,14 +41,14 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
   const url = new URL(req.url, 'http://x'); const p = url.pathname;
   try {
-    if (p === '/health' || p === '/api/health') return json(res, 200, { ok: true, sessions: fs.readdirSync(SESS).length, asksToday: asks.n, cap: CAP }, cors);
+    if (p === '/health' || p === '/api/health') return json(res, 200, { ok: true, open: OPEN, sessions: fs.readdirSync(SESS).length, asksToday: asks.n, cap: CAP }, cors);
     // static: games and design files (no PIN: builds are public on the showcase anyway; ids are unguessable)
     let m;
     if ((m = p.match(/^\/games\/([a-f0-9]{8})\/(.*)$/))) { const f = path.join(sdir(m[1]), 'build/web', m[2] || 'index.html'); if (!f.startsWith(sdir(m[1])) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { const idx = path.join(sdir(m[1]), 'build/web/index.html'); if (!m[2] && fs.existsSync(idx)) return sendFile(res, idx, cors); res.writeHead(404, cors); return res.end('not built'); } return sendFile(res, f, cors); }
     if ((m = p.match(/^\/files\/([a-f0-9]{8})\/(design|assets)\/([A-Za-z0-9._-]+)$/))) { const f = path.join(sdir(m[1]), m[2], m[3]); if (!fs.existsSync(f) || !/\.(png|jpe?g|svg|webp)$/i.test(f)) { res.writeHead(404, cors); return res.end(); } return sendFile(res, f, cors); }
     if (!p.startsWith('/api/')) { res.writeHead(404, cors); return res.end('demo-desk'); }
     const body = req.method === 'POST' ? await readBody(req) : Object.fromEntries(url.searchParams);
-    if (String(body.pin || '') !== PIN) return json(res, 403, { error: 'wrong PIN' }, cors);
+    if (!OPEN && String(body.pin || '') !== PIN) return json(res, 403, { error: 'wrong PIN' }, cors);
     if (p === '/api/session' && req.method === 'POST') {
       if (fs.readdirSync(SESS).length >= MAXS) cleanup();
       if (fs.readdirSync(SESS).length >= MAXS) return json(res, 429, { error: 'the demo server is full for now; try later' }, cors);
